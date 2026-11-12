@@ -8,7 +8,7 @@ A leader harness for coding agents, built on [agent-deck](https://github.com/ash
 Set up https://github.com/ckjeter/leader-in-agent-deck for me. Follow its ONBOARD.md.
 ```
 
-It installs the skill, asks what you have, and writes a roster that fits. After that, start any task with `/leader`.
+It installs the skill, asks what you have, and writes a roster that fits. After that, start a task with `/leader`, or just ask for leader mode.
 
 This is a personal project and is not part of agent-deck. agent-deck does the heavy lifting: it starts the worker sessions, carries messages between them, and keeps every worker visible as a terminal pane you can open and read.
 
