@@ -2,6 +2,14 @@
 
 A leader harness for coding agents, built on [agent-deck](https://github.com/asheshgoplani/agent-deck). One agent session becomes the leader: it splits a task, hands each piece to a worker session running a harness and model you chose, checks what comes back, and writes a grade to a ledger. Over time the ledger shows which harness and model is good at which kind of work.
 
+**TL;DR** Hand this repo to your agent and let it set itself up:
+
+```
+Set up https://github.com/ckjeter/leader-in-agent-deck for me. Follow its ONBOARD.md.
+```
+
+It installs the skill, asks what you have, and writes a roster that fits. After that, start any task with `/leader`.
+
 This is a personal project and is not part of agent-deck. agent-deck does the heavy lifting: it starts the worker sessions, carries messages between them, and keeps every worker visible as a terminal pane you can open and read.
 
 ![The leader loop: split, brief, work, verify, log](docs/loop.svg)
@@ -31,7 +39,7 @@ With that in place a leader is not tied to the machine you are sitting at. From 
 
 ## Quickstart
 
-You need agent-deck working first, with at least one agent CLI it can launch.
+You need agent-deck working first, with at least one agent CLI it can launch. [ONBOARD.md](ONBOARD.md) is the same setup written for an agent to follow. By hand:
 
 ```sh
 git clone https://github.com/ckjeter/leader-in-agent-deck ~/.claude/skills/leader
@@ -82,7 +90,7 @@ The ledger holds only what the leader knows: why a worker was picked and how goo
 
 ## Not built yet
 
-- **An onboarding skill.** It would walk through which CLIs, models and subscriptions you have and write a roster that matches, then keep it current.
+- **Roster upkeep.** [ONBOARD.md](ONBOARD.md) gets an agent to write your first roster. Nothing keeps it current yet when models, CLIs or subscriptions change.
 - **Usage for every pool.** The leader routes around a pool that is running low, but today it can read remaining usage only for Claude. Reading the other pools would make that routing decision better informed.
 
 ## Requirements
