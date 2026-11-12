@@ -154,6 +154,16 @@ class LaunchTests(unittest.TestCase):
         self.assertTrue(workers["test"]["available"])
         self.assertFalse(workers["gone"]["available"])
 
+    def test_indented_done_and_need_lines_are_seen(self):
+        # Codex indents its final message by two spaces in `agent-deck session output`.
+        self.assertEqual(leader.classify("  work\n  ===AGENTDECK_DONE=== status=ok summary=reviewed"), ("done", "reviewed"))
+        self.assertEqual(leader.classify("\t===AGENTDECK_DONE=== status=fail summary=blocked"), ("fail", "blocked"))
+        self.assertEqual(leader.classify("  NEED: which branch?"), ("needs_input", "NEED: which branch?"))
+
+    def test_an_echo_of_the_brief_is_not_a_result(self):
+        echoed = leader.DIRECT_SENTINEL + leader.FOLLOWUP.format(result="/tmp/result.md")
+        self.assertEqual(leader.classify(echoed), (None, None))
+
     def test_usage_limit_variants(self):
         for text in ("You've hit your 5-hour limit", "You've hit your usage limit",
                      "GoUsageLimitError", "quota exceeded"):
