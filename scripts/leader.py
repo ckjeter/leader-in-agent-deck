@@ -28,8 +28,8 @@ SKILL_DIR = Path(__file__).resolve().parent.parent
 HOME = Path(os.environ.get("LEADER_HOME", "~/.local/share/leader")).expanduser()
 CLASSES = ["impl", "review", "research", "bulk", "read", "write"]
 OUTCOMES = ["done", "failed", "abandoned"]
-SENTINEL = re.compile(r"^===AGENTDECK_DONE===\s+status=(ok|fail)\s+summary=(.*)$", re.M)
-NEED = re.compile(r"^NEED:.*$", re.M)
+SENTINEL = re.compile(r"^[ \t]*===AGENTDECK_DONE===\s+status=(ok|fail)\s+summary=(.*)$", re.M)
+NEED = re.compile(r"^[ \t]*(NEED:.*)$", re.M)
 LIMIT = re.compile(r"^.*(usage[ -]?limit|rate limit|hit your (?:[\w-]+ )?limit|quota exceeded|insufficient (balance|credit)).*$",
                    re.M | re.I)
 
@@ -341,8 +341,10 @@ def pid_alive(pid):
 
 def classify(text):
     m = None
-    for m in SENTINEL.finditer(text or ""):
-        pass
+    for found in SENTINEL.finditer(text or ""):
+        # The brief shows this line indented with a <placeholder> summary. An echo of it is not a result.
+        if not found.group(2).lstrip().startswith("<"):
+            m = found
     if m:
         return ("done" if m.group(1) == "ok" else "fail"), m.group(2).strip()
     limits = [m.group(0).strip() for m in LIMIT.finditer(text or "")]
