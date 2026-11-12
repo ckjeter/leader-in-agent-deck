@@ -12,9 +12,9 @@ It installs the skill, asks what you have, and writes a roster that fits. After 
 
 This is a personal project and is not part of agent-deck. agent-deck does the heavy lifting: it starts the worker sessions, carries messages between them, and keeps every worker visible as a terminal pane you can open and read.
 
-![The leader loop: split, brief, work, verify, log](docs/loop.svg)
-
 ## The loop
+
+![The leader loop: split, launch, wait, verify, log](docs/loop.svg)
 
 1. **Split** the task into pieces and give each a class: `impl`, `review`, `research`, `bulk`, `read`, `write`.
 2. **Launch** a worker for each piece with a written brief. The roster says which harness and model goes first for that class.
@@ -23,6 +23,10 @@ This is a personal project and is not part of agent-deck. agent-deck does the he
 5. **Log** a grade from 1 to 3 to the ledger, including the pieces the leader did itself.
 
 The leader is an ordinary agent session with a skill loaded, so it keeps full capability. It delegates when a brief is cheaper than doing the work, and does the rest itself.
+
+Demo: the loop running in a real agent-deck setup, on a sample project made for the recording. Waits are sped up.
+
+https://github.com/user-attachments/assets/67aa3caf-e339-42eb-9568-be68dba1a68c
 
 ## What agent-deck gives it
 
