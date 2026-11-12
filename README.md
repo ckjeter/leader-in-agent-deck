@@ -107,6 +107,7 @@ The ledger holds only what the leader knows: why a worker was picked and how goo
 - **A full group queues the worker, and `launch` reports a failure.** When the agent-deck group is at its concurrency cap the session is queued. `launch` then exits with an error, and `send` and `wait` refuse that run. The session id is still in the run's `meta.json`. Watch that session yourself and read `result.md` when it appears.
 - **A queued Codex session can start without its brief.** Resend `brief.md` to it once it is running.
 - **A message sent to a busy Codex pane can sit typed but unsent.** It goes through when Tab is pressed in the pane. Send follow-ups after the worker has stopped.
+- **On macOS the ledger file name can drift.** The ledger is named after `hostname -s`, and a Mac reports different short names on different networks. Each new name starts a new ledger file, so the stats split. Map every name your Mac reports to one short name under `[hosts]` in the roster, or set `LEADER_HOST`.
 - **Classes are fixed.** `leader log --class` accepts the six classes above and nothing else, so the stats stay comparable.
 - **Claude is the only usage gauge.** `health` shows subscription windows only where agent-deck can read them.
 
