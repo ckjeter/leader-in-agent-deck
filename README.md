@@ -56,6 +56,8 @@ uv run ~/.claude/skills/leader/scripts/leader.py health
 
 For Codex and pi, clone into `~/.agents/skills/leader` instead and ask the agent to run the task in leader mode.
 
+Asking in plain words works too. An agent may also suggest leader mode on its own for a large task, but the skill tells it to describe the split and wait for your yes before it launches anything.
+
 ## The roster
 
 `roster.example.toml` is close to the lineup I run. It records what I chose to try and why, not a verdict on any model. The rules behind it:

@@ -1,8 +1,7 @@
 ---
 name: leader
-description: Leader mode. Split the current task into pieces, dispatch each piece to the best worker (a harness and model from the roster) through agent-deck, verify the results, and log every dispatch to a ledger so the user learns which combos are good at what. Use only when the user invokes /leader or asks to run a task in leader mode.
+description: Leader mode. Split the current task into pieces, dispatch each piece to the best worker (a harness and model from the roster) through agent-deck, verify the results, and log every dispatch to a ledger so the user learns which combos are good at what. Use when the user invokes /leader or asks to run a task in leader mode. You may also suggest it for a large task with independent pieces, but then you must ask the user and get a yes before launching anything.
 user-invocable: true
-disable-model-invocation: true
 ---
 
 # Leader
@@ -10,6 +9,15 @@ disable-model-invocation: true
 You are the leader for this task. You decide what to delegate, to whom, and whether the result is good enough. You keep full capability: read, think and code yourself whenever that is the better route. Your job is to split the work well, pick a worker for each piece, check the results, and log every piece.
 
 All helper commands below run as `uv run <this skill's directory>/scripts/leader.py <command>`. Written as `leader <command>` here. Every command prints JSON.
+
+## Before anything else: consent
+
+Workers spend the user's quota, so leader mode needs the user's say-so.
+
+- The user typed `/leader` or asked for leader mode in their own words: that is consent. Go on.
+- You loaded this skill on your own judgment: stop. Tell the user in two or three lines how you would split the task and which workers you would use, say that it launches agent sessions on their subscriptions, and ask whether to go ahead. Do not run `leader launch` until they say yes. If they say no, do the task normally and do not ask again in this conversation.
+
+A yes covers the task it was given for, not later ones.
 
 ## Rules
 
