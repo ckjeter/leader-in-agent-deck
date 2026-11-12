@@ -1,0 +1,138 @@
+# Workers the leader can dispatch to, and how to start each one.
+# Copy to ~/.config/leader/roster.toml (or set LEADER_ROSTER) and make it yours.
+#
+# This is close to the lineup I run. Read it as "what I chose to try and why",
+# not as a verdict on any model. Every "note" is a hypothesis until your own
+# ledger says otherwise.
+#
+# How I picked:
+# - The subscriptions I already pay for do most of the work. Claude first,
+#   Codex second while its window has room.
+# - The strongest model stays on the leader and is never a worker.
+# - The same model appears under two harnesses on purpose, so the ledger can
+#   separate the model from the harness.
+# - Open models through a cheap gateway get no default slot. They get work only
+#   through exploration slots, so trying them costs little.
+# - Free workers are preferred for exploration.
+
+exploration_share = 0.2   # share of dispatches that go to a non-default worker
+
+[hosts]                   # hostname -s -> short name written to the ledger
+"my-laptop" = "laptop"
+"my-cloud-vm" = "vm"
+
+[pools.claude]
+kind = "subscription"
+limits = "5h and 7d windows, shared with a Claude leader"
+gauge = "agent-deck usage --json"
+
+[pools.codex]
+kind = "subscription"
+limits = "weekly window, shared by the codex CLI and pi's openai-codex provider"
+
+[pools.opencode-go]
+kind = "subscription, exploration only"
+limits = "one shared window across all models"
+console = "https://opencode.ai/console"
+
+# Default worker order per task class. First healthy one wins.
+# When a pool hits its limit the leader skips to the next entry.
+# Gateway workers are left out on purpose: exploration slots are the only way they get work.
+[defaults]
+impl     = ["claude/opus-5.5", "codex/gpt-6.1-sol", "claude/sonnet-5.5"]
+review   = ["claude/opus-5.5", "codex/gpt-6-astra", "claude/sonnet-5.5"]
+research = ["claude/sonnet-5.5", "codex/gpt-6.1-terra", "claude/opus-5.5"]
+bulk     = ["claude/haiku-5.5", "codex/gpt-6-luna", "claude/sonnet-5.5"]
+read     = ["claude/haiku-5.5", "codex/gpt-6.1-terra", "claude/sonnet-5.5"]
+write    = ["claude/sonnet-5.5", "claude/opus-5.5", "codex/gpt-6-astra"]
+
+# launch: agent-deck launch flags that select the harness and model.
+# direct: argv for a headless run when agent-deck is down. The prompt is appended as the last argument.
+# Optional per worker: free = true (preferred for exploration), cap_usd = <number> (your own spending note).
+
+# --- Claude Code ---
+
+[workers."claude/opus-5.5"]
+pool = "claude"
+launch = ["-c", "claude", "--model", "claude-opus-5-5"]
+direct = ["claude", "-p", "--model", "claude-opus-5-5", "--permission-mode", "acceptEdits"]
+note = "First pick where judgment matters. Draws the most from the window"
+
+[workers."claude/sonnet-5.5"]
+pool = "claude"
+launch = ["-c", "claude", "--model", "claude-sonnet-5-5"]
+direct = ["claude", "-p", "--model", "claude-sonnet-5-5", "--permission-mode", "acceptEdits"]
+note = "Trying it where a lighter draw on the window may be enough"
+
+[workers."claude/haiku-5.5"]
+pool = "claude"
+launch = ["-c", "claude", "--model", "claude-haiku-5-5"]
+direct = ["claude", "-p", "--model", "claude-haiku-5-5", "--permission-mode", "acceptEdits"]
+note = "Volume work. Pairs with pi/haiku-5.5-go for a harness comparison"
+
+# --- Codex CLI ---
+
+[workers."codex/gpt-6-astra"]
+pool = "codex"
+launch = ["-c", "codex", "--model", "gpt-6-astra"]
+direct = ["codex", "exec", "--model", "gpt-6-astra", "-s", "workspace-write"]
+note = "A second opinion from another lab, without spending the Claude window"
+
+[workers."codex/gpt-6.1-sol"]
+pool = "codex"
+launch = ["-c", "codex", "--model", "gpt-6.1-sol"]
+direct = ["codex", "exec", "--model", "gpt-6.1-sol", "-s", "workspace-write"]
+note = "Second in line for implementation"
+
+[workers."codex/gpt-6.1-terra"]
+pool = "codex"
+launch = ["-c", "codex", "--model", "gpt-6.1-terra"]
+direct = ["codex", "exec", "--model", "gpt-6.1-terra", "-s", "workspace-write"]
+note = "Research and reading on Codex quota"
+
+[workers."codex/gpt-6-luna"]
+pool = "codex"
+launch = ["-c", "codex", "--model", "gpt-6-luna"]
+direct = ["codex", "exec", "--model", "gpt-6-luna", "-s", "workspace-write"]
+note = "Volume work on Codex quota"
+
+# --- pi: same models under another harness ---
+
+[workers."pi/gpt-6.1-sol-codex"]
+pool = "codex"
+launch = ["-cmd", "pi --model openai-codex/gpt-6.1-sol"]
+direct = ["pi", "-p", "--model", "openai-codex/gpt-6.1-sol"]
+note = "Same model as codex/gpt-6.1-sol. Harness comparison"
+
+[workers."pi/haiku-5.5-go"]
+pool = "opencode-go"
+launch = ["-cmd", "pi --model opencode-go/claude-haiku-5-5"]
+direct = ["pi", "-p", "--model", "opencode-go/claude-haiku-5-5"]
+note = "Same model as claude/haiku-5.5. Harness comparison"
+
+# --- pi: open models through a gateway, exploration only ---
+
+[workers."pi/kimi-k3.1-pro-go"]
+pool = "opencode-go"
+launch = ["-cmd", "pi --model opencode-go/kimi-k3.1-pro"]
+direct = ["pi", "-p", "--model", "opencode-go/kimi-k3.1-pro"]
+note = "Want to see how it holds up on long agentic runs"
+
+[workers."pi/deepseek-v4-pro"]
+pool = "opencode-go"
+launch = ["-cmd", "pi --model opencode-go/deepseek-v4-pro"]
+direct = ["pi", "-p", "--model", "opencode-go/deepseek-v4-pro"]
+note = "Want to try it on review and reasoning-heavy pieces"
+
+[workers."pi/qwen3.8-flash"]
+pool = "opencode-go"
+launch = ["-cmd", "pi --model opencode-go/qwen3.8-flash"]
+direct = ["pi", "-p", "--model", "opencode-go/qwen3.8-flash"]
+note = "Want to try it on cheap reading and summaries"
+
+[workers."pi/beam-free"]
+pool = "opencode-go"
+free = true
+launch = ["-cmd", "pi --model opencode-go/beam-free"]
+direct = ["pi", "-p", "--model", "opencode-go/beam-free"]
+note = "Free while the offer lasts, so it gets exploration slots first"

@@ -1,0 +1,27 @@
+name: Bug report
+description: Something in leader does not work as the docs say.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The command you ran, what you expected and what you got. Replace private paths, hostnames and task text with placeholders.
+    validations:
+      required: true
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: Output of `agent-deck version`, the leader commit (`git rev-parse --short HEAD`), and the harness and model of the leader and the worker.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: health
+    attributes:
+      label: leader health output
+      description: Optional. Remove private paths and hostnames first.
+      render: json
+    validations:
+      required: false
