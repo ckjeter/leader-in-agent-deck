@@ -2,6 +2,10 @@
 
 A leader harness for coding agents, built on [agent-deck](https://github.com/asheshgoplani/agent-deck). One agent session becomes the leader: it splits a task, hands each piece to a worker session running a harness and model you chose, checks what comes back, and writes a grade to a ledger. Over time the ledger shows which harness and model is good at which kind of work.
 
+https://github.com/user-attachments/assets/67aa3caf-e339-42eb-9568-be68dba1a68c
+
+A real run, sped up: one leader, a Claude worker and a Codex worker, one follow-up, graded into the ledger.
+
 **TL;DR** Hand this repo to your agent and let it set itself up:
 
 ```
