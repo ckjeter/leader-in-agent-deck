@@ -24,7 +24,7 @@ This is a personal project and is not part of agent-deck. agent-deck does the he
 
 The leader is an ordinary agent session with a skill loaded, so it keeps full capability. It delegates when a brief is cheaper than doing the work, and does the rest itself.
 
-A real run, sped up: one leader, a Claude worker and a Codex worker, one follow-up, graded into the ledger.
+Demo: the loop running in a real agent-deck setup, on a sample project made for the recording. Waits are sped up.
 
 https://github.com/user-attachments/assets/67aa3caf-e339-42eb-9568-be68dba1a68c
 
