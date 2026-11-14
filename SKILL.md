@@ -32,6 +32,8 @@ A yes covers the task it was given for, not later ones.
 leader health
 ```
 
+If workers from an earlier task in this conversation are still open, archive them now (section 6).
+
 `mode` decides how you work for the rest of the task:
 
 | mode | Meaning | What you do |
@@ -128,9 +130,16 @@ Add `--explore` for exploration slots and `--bakeoff <id>` when the same piece w
 
 ## 6. Report
 
-Archive this task's workers first: `agent-deck session archive <session>`. Keep a worker only when its piece waits on the user's decision, and name that session in the report. Do not keep workers for later tasks: their cache will have expired and their old context gets in the way.
+End with a short table for the user: each piece, who did it, its agent-deck session, grade, and anything that failed or needs their decision.
 
-End with a short table for the user: each piece, who did it, grade, and anything that failed or needs their decision. If the user later disagrees with a grade:
+Leave this task's workers open when you report. The user may want to open a session and read what it did. Archive them later, with `agent-deck session archive <session>`:
+
+- when the next task starts in this conversation, before its first launch, or
+- when the user says they are done with them.
+
+Keep a worker past that point only when its piece still waits on the user's decision. A new piece gets a new worker even while an old one is open: one run is one ledger row.
+
+If the user later disagrees with a grade:
 
 ```sh
 leader regrade --id <run id> --grade 1 --note "broke the build next day"
