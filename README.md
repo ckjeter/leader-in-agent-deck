@@ -105,8 +105,8 @@ The ledger holds only what the leader knows: why a worker was picked and how goo
 ## Known limitations
 
 - **A new folder stops at the trust prompt.** Launching a Claude Code or Codex worker into a directory that CLI has never opened waits on its "trust this folder?" prompt. `launch` can time out and the brief may not be delivered. Open the folder once with that CLI first, or accept the prompt in the worker's pane and resend the run's `brief.md` with `agent-deck session send`.
-- **A full group queues the worker, and `launch` reports a failure.** When the agent-deck group is at its concurrency cap the session is queued. `launch` then exits with an error, and `send` and `wait` refuse that run. The session id is still in the run's `meta.json`. Watch that session yourself and read `result.md` when it appears.
-- **A queued Codex session can start without its brief.** Resend `brief.md` to it once it is running.
+- **A full group queues the worker.** When the agent-deck group is at its concurrency cap the session is queued. The leader's own session holds a slot, so in a group that allows one session the worker never starts. `launch` reports `queued` and `wait` returns `queued` after two minutes. Raise the group's cap, or name a worker group under `[agent_deck]` in the roster.
+- **A queued Codex session can start without its brief.** `wait` returns `idle` when a worker sits at a prompt with no completion line. Resend `brief.md` to it with `leader send`.
 - **A message sent to a busy Codex pane can sit typed but unsent.** It goes through when Tab is pressed in the pane. Send follow-ups after the worker has stopped.
 - **On macOS the ledger file name can drift.** The ledger is named after `hostname -s`, and a Mac reports different short names on different networks. Each new name starts a new ledger file, so the stats split. Map every name your Mac reports to one short name under `[hosts]` in the roster, or set `LEADER_HOST`.
 - **Classes are fixed.** `leader log --class` accepts the six classes above and nothing else, so the stats stay comparable.

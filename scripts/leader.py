@@ -346,8 +346,9 @@ def cmd_launch(args):
         if before is None:
             meta["agent_deck_error"] = "agent-deck unavailable before launch; falling back to direct"
         else:
+            group = roster.get("agent_deck", {}).get("group")
             cmd = ["launch", "-t", title, *spec["launch"], "-assert-done",
-                   "-message-file", str(rd / "brief.md"), "-inherit-group"]
+                   "-message-file", str(rd / "brief.md"), *(["-g", group] if group else ["-inherit-group"])]
             if os.environ.get("AGENTDECK_INSTANCE_ID"):
                 cmd += ["-parent", os.environ["AGENTDECK_INSTANCE_ID"]]
             if args.worktree:
@@ -361,9 +362,13 @@ def cmd_launch(args):
                 data = json.loads(response)
             except json.JSONDecodeError:
                 data = None
-            if ok and isinstance(data, dict) and data.get("success") and data.get("session_id"):
+            session = isinstance(data, dict) and (data.get("session_id") or data.get("id"))
+            if ok and data.get("success") and session:
                 via = "agent-deck"
-                meta["session"] = data["session_id"]
+                meta["session"] = session
+                # At the group's concurrency cap agent-deck accepts the launch and parks it.
+                if data.get("status") == "queued":
+                    meta["queued"] = {"group": data.get("group"), "max_concurrent": data.get("max_concurrent")}
             else:
                 old_ids = {s.get("id") for s in before}
                 candidates = [s for s in (ad_json("list", timeout=30) or [])
@@ -467,6 +472,7 @@ def cmd_wait(args):
     deadline = time.time() + args.timeout
     failures = 0
     state, summary, last_status = None, None, None
+    stuck = {}  # status -> when this wait first saw the session sitting there with nothing to report
     while time.time() < deadline:
         if meta["via"] == "agent-deck":
             sessions = ad_json("list", timeout=30)
@@ -483,6 +489,15 @@ def cmd_wait(args):
                 if last_status in ("error", "missing"):
                     state, summary = "error", f"session status {last_status}"
                     break
+                if last_status == "queued":
+                    if time.time() - stuck.setdefault("queued", time.time()) >= args.queued_grace:
+                        q = meta.get("queued") or {}
+                        state = "queued"
+                        summary = (f"still queued: group {q.get('group')} allows {q.get('max_concurrent')} "
+                                   "running session(s) and a leader in that group counts as one")
+                        break
+                else:
+                    stuck.pop("queued", None)
                 if last_status in ("waiting", "idle", "stopped"):
                     fresh = meta.get("seen_output") != digest(text)
                     state, summary = classify(text) if fresh else (None, None)
@@ -491,6 +506,14 @@ def cmd_wait(args):
                     if last_status == "stopped":
                         state, summary = "fail", "session stopped without a completion line"
                         break
+                    # Sitting at a prompt with no completion line: a startup dialog, a lost brief, a question.
+                    if fresh and time.time() - stuck.setdefault("idle", time.time()) >= args.idle_grace:
+                        tail = [line.strip() for line in text.strip().splitlines()
+                                if line.strip() and not line.startswith(("Session:", "Time:", "---"))][-4:]
+                        state, summary = "idle", " / ".join(tail)[:400] or "no output at all"
+                        break
+                else:
+                    stuck.pop("idle", None)
         else:
             log = (run_dir(args.run) / "stdout.log").read_text(errors="replace")
             state, summary = classify(log)
@@ -584,6 +607,9 @@ def main():
     p.add_argument("--run", required=True)
     p.add_argument("--timeout", type=int, default=3600)
     p.add_argument("--interval", type=int, default=20)
+    p.add_argument("--queued-grace", type=int, default=120, help="seconds queued before reporting state queued")
+    p.add_argument("--idle-grace", type=int, default=180,
+                   help="seconds waiting at a prompt with no completion line before reporting state idle")
     p.set_defaults(fn=cmd_wait)
 
     p = sub.add_parser("log")

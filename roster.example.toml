@@ -14,6 +14,12 @@
 # - Open models through a cheap gateway get no default slot, so the leader
 #   never picks them and never uses them as a bakeoff challenger.
 
+# Workers join the leader's agent-deck group unless a group is named here. Name one
+# when your groups cap running sessions: the leader itself holds a slot, so in a
+# group that allows one session a worker waits behind the leader forever.
+# [agent_deck]
+# group = "leader-workers"
+
 # When the leader stops sending work to a pool. Percentages are of a usage window.
 [budget]
 max_5h = 80               # no new dispatch once the 5h window is past this
