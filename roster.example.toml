@@ -18,6 +18,7 @@
 [budget]
 max_5h = 80               # no new dispatch once the 5h window is past this
 max_7d = 90               # same for the weekly window
+max_30d = 90              # same for a monthly window, where the provider has one
 bakeoff_max = 60          # a bakeoff needs every window of both pools under this
 limit_hold_minutes = 300  # after a worker hits a limit, keep its pool closed this long
 
@@ -43,7 +44,8 @@ gauge = "codex-sessions"  # read from the rate limits Codex writes into its newe
 
 [pools.opencode-go]
 kind = "subscription, no default slot"
-limits = "one shared window across all models. No gauge: the leader only knows when a worker last hit the limit"
+limits = "5h, weekly and monthly windows, shared across all models and every tool that uses the key"
+gauge = "opencode-go"     # asks the gateway, with the key from $OPENCODE_API_KEY or the pi or opencode auth file
 console = "https://opencode.ai/console"
 
 # Default worker order per task class. First healthy one wins.

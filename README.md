@@ -110,7 +110,7 @@ The ledger holds only what the leader knows: why a worker was picked and how goo
 - **A message sent to a busy Codex pane can sit typed but unsent.** It goes through when Tab is pressed in the pane. Send follow-ups after the worker has stopped.
 - **On macOS the ledger file name can drift.** The ledger is named after `hostname -s`, and a Mac reports different short names on different networks. Each new name starts a new ledger file, so the stats split. Map every name your Mac reports to one short name under `[hosts]` in the roster, or set `LEADER_HOST`.
 - **Classes are fixed.** `leader log --class` accepts the six classes above and nothing else, so the stats stay comparable.
-- **Claude is the only usage gauge.** `health` shows subscription windows only where agent-deck can read them.
+- **Usage gauges cover three pools.** Claude through `agent-deck usage`, Codex through its session files, OpenCode Go through its usage endpoint. That endpoint is not documented and may change. When any gauge fails, the pool shows `source: null` and the leader only knows when a worker last hit a limit.
 
 ## Contributing
 

@@ -21,6 +21,7 @@ import subprocess
 import sys
 import time
 import tomllib
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 
@@ -133,7 +134,9 @@ def append_event(h, event):
 
 # ---------- pool usage ----------
 
-WINDOW_CAPS = {"5h": 80, "7d": 90}
+WINDOW_CAPS = {"5h": 80, "7d": 90, "30d": 90}
+GO_USAGE_URL = "https://opencode.ai/zen/go/v1/usage"
+GO_KEY_FILES = ["~/.pi/agent/auth.json", "~/.local/share/opencode/auth.json"]
 
 
 def window_label(minutes):
@@ -178,6 +181,38 @@ def codex_usage():
     return None
 
 
+def opencode_go_key():
+    if os.environ.get("OPENCODE_API_KEY"):
+        return os.environ["OPENCODE_API_KEY"]
+    for name in GO_KEY_FILES:
+        try:
+            key = json.loads(Path(name).expanduser().read_text())["opencode-go"]["key"]
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+        if key:
+            return key
+    return None
+
+
+def opencode_go_usage():
+    """Ask the OpenCode Go gateway. The endpoint is not documented, so any surprise means no reading."""
+    key = opencode_go_key()
+    if not key:
+        return None
+    # The gateway turns away urllib's default User-Agent with a 403.
+    req = urllib.request.Request(GO_USAGE_URL, headers={"Authorization": f"Bearer {key}", "Accept": "application/json",
+                                                        "User-Agent": "leader-in-agent-deck"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            usage = json.loads(resp.read())["usage"]
+        windows = [{"label": label, "used_percentage": usage[name]["percent"],
+                    "resets_at": int(datetime.fromisoformat(usage[name]["resetsAt"].replace("Z", "+00:00")).timestamp())}
+                   for name, label in (("rolling", "5h"), ("weekly", "7d"), ("monthly", "30d")) if name in usage]
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+    return {"windows": windows, "as_of": int(time.time()), "source": "opencode go usage endpoint"} if windows else None
+
+
 def pool_usage(roster, events):
     """Per pool: what the provider says is used, when a worker last hit a limit, and whether to dispatch."""
     budget = roster.get("budget", {})
@@ -198,6 +233,8 @@ def pool_usage(roster, events):
                              "as_of": p.get("updated_at"), "source": "agent-deck usage"}
         elif gauge == "codex-sessions":
             entry = codex_usage() or entry
+        elif gauge == "opencode-go":
+            entry = opencode_go_usage() or entry
         why, room = [], True
         for w in entry["windows"] or []:
             used = w.get("used_percentage")
