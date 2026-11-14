@@ -109,7 +109,7 @@ class LaunchTests(unittest.TestCase):
     def test_wait_reports_launch_error_without_sending(self):
         result, _ = self.launch([[], []], "startup timed out")
         with patch.object(leader, "ad") as ad, contextlib.redirect_stdout(io.StringIO()) as output:
-            leader.cmd_wait(argparse.Namespace(run=result["run"], timeout=1, interval=0))
+            leader.cmd_wait(argparse.Namespace(run=result["run"], timeout=1, interval=0, queued_grace=999, idle_grace=999))
         self.assertEqual(json.loads(output.getvalue())["state"], "error")
         ad.assert_not_called()
 
@@ -117,7 +117,7 @@ class LaunchTests(unittest.TestCase):
         result, _ = self.launch([None], "unused")
         (Path(result["result"]).parent / "stdout.log").write_text("429 GoUsageLimitError: OpenCode Go usage limit reached")
         with patch.object(leader, "pid_alive", return_value=True), contextlib.redirect_stdout(io.StringIO()) as output:
-            leader.cmd_wait(argparse.Namespace(run=result["run"], timeout=1, interval=0))
+            leader.cmd_wait(argparse.Namespace(run=result["run"], timeout=1, interval=0, queued_grace=999, idle_grace=999))
         self.assertEqual(json.loads(output.getvalue())["state"], "limit")
         events = leader.read_ledger(leader.host(self.roster))
         self.assertEqual([(e["type"], e["pool"]) for e in events], [("pool_limit", "go")])
@@ -197,13 +197,40 @@ class LaunchTests(unittest.TestCase):
             titles.append(ad.call_args.args[ad.call_args.args.index("-t") + 1])
         self.assertEqual(titles, ["Task [test] aaaa", "Task [test] bbbb"])
 
-    def wait(self, status, output):
+    def wait(self, status, output, queued_grace=999, idle_grace=999):
         sessions = [{"id": "new", "status": status}]
         with patch.object(leader, "ad_json", return_value=sessions), \
              patch.object(leader, "ad", return_value=(True, output)), \
              contextlib.redirect_stdout(io.StringIO()) as out:
-            leader.cmd_wait(argparse.Namespace(run=self.run, timeout=0.05, interval=0))
+            leader.cmd_wait(argparse.Namespace(run=self.run, timeout=0.05, interval=0,
+                                               queued_grace=queued_grace, idle_grace=idle_grace))
         return json.loads(out.getvalue())["state"]
+
+    def test_a_launch_parked_at_the_group_cap_is_a_launch_not_a_failure(self):
+        parked = '{"success":true,"id":"new","status":"queued","group":"work","max_concurrent":1}'
+        result, _ = self.launch([[]], parked, ok=True)
+        self.assertNotIn("error", result)
+        self.assertEqual(result["session"], "new")
+        self.assertEqual(result["queued"], {"group": "work", "max_concurrent": 1})
+        self.run = result["run"]
+        self.assertEqual(self.wait("queued", ""), "timeout")
+        self.assertEqual(self.wait("queued", "", queued_grace=0), "queued")
+
+    def test_a_worker_sitting_at_a_prompt_is_reported_as_idle(self):
+        result, _ = self.launch([[]], '{"success":true,"session_id":"new"}', ok=True)
+        self.run = result["run"]
+        prompt = "1. Update now\n2. Skip\nenter continue"
+        self.assertEqual(self.wait("waiting", prompt), "timeout")
+        self.assertEqual(self.wait("waiting", prompt, idle_grace=0), "idle")
+        self.assertEqual(self.wait("waiting", "ok\n===AGENTDECK_DONE=== status=ok summary=x", idle_grace=0), "done")
+        self.assertEqual(self.wait("running", prompt, idle_grace=0), "timeout")
+
+    def test_a_worker_group_in_the_roster_replaces_inherit_group(self):
+        self.roster["agent_deck"] = {"group": "workers"}
+        _, ad = self.launch([[]], '{"success":true,"session_id":"new"}', ok=True)
+        args = ad.call_args.args
+        self.assertEqual(args[args.index("-g") + 1], "workers")
+        self.assertNotIn("-inherit-group", args)
 
     def test_wait_after_send_ignores_the_previous_round(self):
         result, _ = self.launch([[]], '{"success":true,"session_id":"new"}', ok=True)

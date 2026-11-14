@@ -93,7 +93,7 @@ Write the brief to a file. A good brief has:
 leader launch --worker pi/glm-5.2 --path <repo> --brief <brief file> --title "<short task>" --class impl
 ```
 
-Add `--worktree <branch>` for `impl` pieces in a repo where you or another worker are also editing. `launch` appends the output contract (write `result.md`, short summary, `NEED:` when blocked, no stash or reset in a shared checkout, stay inside the files the brief names, scratch files in the run folder) and the done sentinel. Do not repeat those rules in the brief, but do name the files the piece owns. It returns the `run` id, the agent-deck `session` and the `result` path.
+Add `--worktree <branch>` for `impl` pieces in a repo where you or another worker are also editing. `launch` appends the output contract (write `result.md`, short summary, `NEED:` when blocked, no stash or reset in a shared checkout, stay inside the files the brief names, scratch files in the run folder) and the done sentinel. Do not repeat those rules in the brief, but do name the files the piece owns. It returns the `run` id, the agent-deck `session` and the `result` path. A `queued` field in the output means agent-deck accepted the worker but has not started it: see `queued` under Wait.
 
 ## 4. Wait
 
@@ -110,6 +110,8 @@ It blocks until the worker finishes. If your harness can run a command in the ba
 | `limit` | The worker hit its usage limit. `wait` has recorded it, so `leader roster` now shows that pool closed for every leader on this host. Log the attempt as `failed` with the limit in `--rework`, rerun `leader roster` and launch the new `pick` |
 | `needs_input` | Answer with `leader send --run <run id> --message "..."` if you can decide. Escalate to the user when the decision is theirs. Then wait again |
 | `error` | The session died. Log `failed`, retry on the next worker |
+| `queued` | agent-deck parked the worker because its group is at its concurrency cap. Your own session counts toward the cap of the group you are in, so a worker queued behind you never starts while you keep working. Tell the user once: they can raise the group's cap or name a worker group in the roster (`[agent_deck] group`). The cap is theirs to change, not yours. Do not pass `--direct` to get around it. If other workers of yours hold the slots, wait again |
+| `idle` | The worker is sitting at a prompt and never printed a completion line. The summary shows its last lines. Usual causes: a startup dialog (update, folder trust), a brief that did not arrive, or a question asked without `NEED:`. Read `agent-deck session output <session>`, then answer it or resend the brief with `leader send` |
 | `timeout` | Look at it: `agent-deck session output <session>`. Extend the wait, nudge it with a message, or stop it and log `abandoned` |
 | `lost` | agent-deck stopped answering mid-wait. The child may still finish: check `result.md` before anything else. Switch to `degraded` handling for new launches |
 
@@ -155,5 +157,6 @@ leader regrade --id <run id> --grade 1 --note "broke the build next day"
 ## Configuration
 
 - Roster: `$LEADER_ROSTER`, else `~/.config/leader/roster.toml`, else `roster.toml` in this skill's directory (gitignored), else the shipped `roster.example.toml`. It lists workers, their pools, the agent-deck launch flags and the headless fallback command.
+- Worker group: by default workers join the leader's agent-deck group. `[agent_deck] group = "<name>"` in the roster sends them to that group instead, which keeps them out from behind a group that allows one session at a time.
 - Data: `$LEADER_HOME`, default `~/.local/share/leader`. The ledger format is in `references/ledger-v1.md`.
 - Host name: `$LEADER_HOST`, else the roster's `[hosts]` map, else `hostname -s`.
