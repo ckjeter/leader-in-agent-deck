@@ -42,9 +42,9 @@ If workers from an earlier task in this conversation are still open, archive the
 | `degraded` | agent-deck is down, worker CLIs exist | `leader launch` falls back to a headless run of the worker CLI by itself (`via: direct`). Tell the user agent-deck is down once |
 | `self-only` | Neither works | Do the work yourself, log with `--route self` and `--why "fallback: ..."` |
 
-Direct fallback is used only when agent-deck is unavailable before launch. A failed or timed-out launch may already have created a worker. The helper records that attempt and any new session ID in `meta.json`, then exits with an error. Inspect that session before retrying. Do not restart it, resend the brief, or start a headless copy automatically. Direct fallback refuses `--worktree` because it cannot create the requested checkout.
+Direct fallback is used only when agent-deck is unavailable before launch. Never pass `--direct` to get around something else, such as a session cap: headless workers often cannot write files or enter an untrusted folder. A failed or timed-out launch may already have created a worker. The helper records that attempt and any new session ID in `meta.json`, then exits with an error. Inspect that session before retrying. Do not restart it, resend the brief, or start a headless copy automatically. Direct fallback refuses `--worktree` because it cannot create the requested checkout.
 
-`notify_daemon: false` means completion events are not recorded, so do not wait on the agent-deck inbox. Always wait with `leader wait`, which reads the session directly. `usage` shows subscription windows that agent-deck can see (Claude today).
+`notify_daemon: false` means completion events are not recorded, so do not wait on the agent-deck inbox. Always wait with `leader wait`, which reads the session directly. `pools` shows what each pool has left, explained in the next section.
 
 ## 2. Split and route
 
@@ -52,19 +52,35 @@ Break the task into pieces and give each a class: `impl`, `review`, `research`, 
 
 Do a piece yourself when writing the brief and checking the result would take longer than doing it, roughly under ten minutes of your own work, or when it needs context only you have.
 
+Pieces that run at the same time must not share files. Give each piece the files it owns and name them in its brief. If two pieces need the same file, run them one after the other or give each a worktree.
+
 For the rest:
 
 ```sh
 leader roster --class impl
 ```
 
-- Skip every worker with `available: false`: its CLI is not installed on this host. This applies to defaults and to exploration slots.
-- Take the first worker in `defaults` for the class, unless its pool is low (a usage window over 80%, or a recent launch failed on a limit). Then take the next one.
-- If `explore_now` is true, pick a worker that is not the default for this class, for a low-risk piece. Prefer `free` workers. Mark it `--explore` when logging.
-- The ledger stats per worker and class (`n`, `mean_grade` over graded rows, `failed`, `abandoned`) beat the roster notes once a worker has about ten rows in a class.
+Quota decides who can take work, the roster order decides who should.
+
+- `pools` gives each pool's usage windows as the provider reports them, how old the reading is (`age_minutes`), and when a worker last hit a limit. `ok: false` means do not dispatch there, and `why` says what closed it: a window over its cap, or a limit hit within the hold time. A pool with `source: null` has no gauge. Its `ok` only knows about past limit hits, so send it one piece at a time.
+- `route.<class>.pick` is the first worker in `defaults` that is installed and whose pool is `ok`. Use it. It is `null` when every default is closed: do the piece yourself or tell the user.
+- Count before you fan out. Several pieces going to one pool at once all draw from the same window. If the window is already past half, split the round across pools or run fewer pieces at a time.
+- Rerun `leader roster` before each round. Readings change while workers run, and other leaders share the same pools.
+- Do not pick by track record. The per-worker `ledger` counts are there to show how thin the data is. Grades in the ledger are for the user's analysis and are too few and too noisy to route on. The order in `defaults` is the user's own judgment and stays the rule until they change it.
 - Write one line on why. It goes into the ledger.
 
 Pieces with no dependency on each other launch at the same time.
+
+### Bakeoff, on by default
+
+A bakeoff sends one piece to two workers so the ledger gets a real comparison. It is how new workers get tried.
+
+- When `route.<class>.bakeoff_challenger` is not null, run one bakeoff in this round of pieces, never more than one. Pick the piece whose result is easiest to compare side by side, and send it to both `pick` and the challenger. The helper offers a challenger only when both pools have room, and takes a worker from the pools that have a default slot: another pool than `pick` first, then the fewest rows in that class.
+- You may swap the challenger for another installed worker in an `ok` pool when the suggested one clearly cannot do the piece. Say why.
+- Tell the user before launching: which piece, which two workers, and that it costs one extra run. They can turn bakeoffs off in plain words ("no bakeoffs", "save quota"). That holds for the rest of the task, and the next task starts with them on again.
+- Each copy of an `impl` piece gets its own `--worktree`.
+- Use one result and say which. When the user states a preference between the two, record it with `leader regrade --by user`.
+- Log both rows with the same `--bakeoff <id>`, and the challenger's row with `--explore`.
 
 ## 3. Brief and launch
 
@@ -79,7 +95,7 @@ Write the brief to a file. A good brief has:
 leader launch --worker pi/glm-5.2 --path <repo> --brief <brief file> --title "<short task>" --class impl
 ```
 
-Add `--worktree <branch>` for `impl` pieces in a repo where you or another worker are also editing. `launch` appends the output contract (write `result.md`, short summary, `NEED:` when blocked) and the done sentinel. It returns the `run` id, the agent-deck `session` and the `result` path.
+Add `--worktree <branch>` for `impl` pieces in a repo where you or another worker are also editing. `launch` appends the output contract (write `result.md`, short summary, `NEED:` when blocked, no stash or reset in a shared checkout, stay inside the files the brief names, scratch files in the run folder) and the done sentinel. Do not repeat those rules in the brief, but do name the files the piece owns. It returns the `run` id, the agent-deck `session` and the `result` path.
 
 ## 4. Wait
 
@@ -93,13 +109,13 @@ It blocks until the worker finishes. If your harness can run a command in the ba
 |---|---|
 | `done` | Read `result.md` (or the diff), then verify |
 | `fail` | Read the summary. Log the attempt as `failed`. Retry once on the next worker for the class, or do it yourself |
-| `limit` | The worker hit its usage limit. Log the attempt as `failed` with the limit in `--rework`, treat that pool as exhausted for the rest of the task, and launch the next worker for the class |
+| `limit` | The worker hit its usage limit. `wait` has recorded it, so `leader roster` now shows that pool closed for every leader on this host. Log the attempt as `failed` with the limit in `--rework`, rerun `leader roster` and launch the new `pick` |
 | `needs_input` | Answer with `leader send --run <run id> --message "..."` if you can decide. Escalate to the user when the decision is theirs. Then wait again |
 | `error` | The session died. Log `failed`, retry on the next worker |
 | `timeout` | Look at it: `agent-deck session output <session>`. Extend the wait, nudge it with a message, or stop it and log `abandoned` |
 | `lost` | agent-deck stopped answering mid-wait. The child may still finish: check `result.md` before anything else. Switch to `degraded` handling for new launches |
 
-When a launch or a worker fails on a usage limit, treat that pool as exhausted for the rest of the task.
+When a launch fails on a usage limit before `wait` can see it, treat that pool as closed for the rest of the task yourself.
 
 ## 5. Verify, grade, log
 
@@ -126,7 +142,7 @@ leader log --run <run id> --class impl --task "<one line>" --why "<one line>" \
 leader log --route self --class read --task "<one line>" --why "faster than a brief" --outcome done
 ```
 
-Add `--explore` for exploration slots and `--bakeoff <id>` when the same piece went to several workers on purpose. Do not archive yet. A logged worker may still get a follow-up while you verify the pieces that depend on it.
+Add `--bakeoff <id>` to every row of a bakeoff and `--explore` to the challenger's row. Do not archive yet. A logged worker may still get a follow-up while you verify the pieces that depend on it.
 
 ## 6. Report
 
