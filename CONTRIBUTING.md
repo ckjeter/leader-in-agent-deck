@@ -39,7 +39,7 @@ Do not change `[defaults]`. That order is the maintainer's own lineup.
 ## Sharing ledger observations
 
 Never post raw ledger rows, briefs or results. The `project`, `task` and `why` fields hold private paths and task text.
-Share per-worker stats from `leader roster --class <class>`: `n`, `mean_grade`, `failed` and `abandoned`.
+Share per-worker stats computed from your own ledger: `n`, mean grade, `failed` and `abandoned`.
 Wait for at least 10 rows per worker in that class. Include the date, the harness version and one line on the kind of work.
 Post these observations in [Discussions](https://github.com/ckjeter/leader-in-agent-deck/discussions), not in the repo. Questions also belong there.
 
