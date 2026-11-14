@@ -32,6 +32,7 @@ class LaunchTests(unittest.TestCase):
         self.patches = [patch.object(leader, "HOME", self.root / "state"),
                         patch.object(leader, "load_roster", return_value=self.roster),
                         patch.object(leader.shutil, "which", return_value="/fake/pi"),
+                        patch.object(leader.secrets, "token_hex", return_value="abcd"),
                         patch.object(leader.subprocess, "Popen")]
         for p in self.patches:
             p.start()
@@ -60,7 +61,7 @@ class LaunchTests(unittest.TestCase):
         self.popen.assert_not_called()
 
     def test_partial_launch_is_recorded_without_restart_resend_or_duplicate(self):
-        child = {"id": "new", "title": "Task [test]", "status": "error"}
+        child = {"id": "new", "title": "Task [test] abcd", "status": "error"}
         result, ad = self.launch([[], [child]], "startup timed out")
         self.assertEqual(result["session"], "new")
         self.assertEqual(result["launch_error"], "startup timed out")
@@ -70,13 +71,13 @@ class LaunchTests(unittest.TestCase):
         self.popen.assert_not_called()
 
     def test_does_not_adopt_an_old_session_with_the_same_title(self):
-        old = {"id": "old", "title": "Task [test]"}
+        old = {"id": "old", "title": "Task [test] abcd"}
         result, _ = self.launch([[old], [old]], "launch failed")
         self.assertIsNone(result["session"])
         self.popen.assert_not_called()
 
     def test_ambiguous_new_sessions_are_not_restarted(self):
-        sessions = [{"id": sid, "title": "Task [test]"} for sid in ("one", "two")]
+        sessions = [{"id": sid, "title": "Task [test] abcd"} for sid in ("one", "two")]
         result, ad = self.launch([[], sessions], "launch failed")
         self.assertIsNone(result["session"])
         self.assertEqual(ad.call_count, 1)
@@ -118,6 +119,20 @@ class LaunchTests(unittest.TestCase):
         with patch.object(leader, "pid_alive", return_value=True), contextlib.redirect_stdout(io.StringIO()) as output:
             leader.cmd_wait(argparse.Namespace(run=result["run"], timeout=1, interval=0))
         self.assertEqual(json.loads(output.getvalue())["state"], "limit")
+
+    def test_brief_tells_the_worker_how_to_share_a_checkout(self):
+        result, _ = self.launch([[]], '{"success":true,"session_id":"new"}', ok=True)
+        brief = (Path(result["result"]).parent / "brief.md").read_text()
+        self.assertIn("git stash", brief)
+        self.assertIn(str(Path(result["result"]).parent), brief)
+
+    def test_two_launches_with_one_title_get_different_session_titles(self):
+        titles = []
+        for suffix in ("aaaa", "bbbb"):
+            with patch.object(leader.secrets, "token_hex", return_value=suffix):
+                _, ad = self.launch([[]], '{"success":true,"session_id":"new"}', ok=True)
+            titles.append(ad.call_args.args[ad.call_args.args.index("-t") + 1])
+        self.assertEqual(titles, ["Task [test] aaaa", "Task [test] bbbb"])
 
     def wait(self, status, output):
         sessions = [{"id": "new", "status": status}]
