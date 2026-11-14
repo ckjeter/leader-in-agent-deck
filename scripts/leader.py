@@ -214,6 +214,10 @@ CONTRACT = """
 - Write your full result to: {result}
 - Your final message: at most five lines of summary, then the line `RESULT: {result}`.
 - If you are blocked and need a decision, start a line with `NEED:` and stop.
+- Unless the brief says you have your own worktree, other agents are editing this checkout right now.
+  Do not run `git stash`, `git reset`, `git checkout` on files you did not change, or switch branches.
+- Change only the files the brief gives you. If the task needs another file, say which and why in your result.
+- Scratch files go in {scratch}, not in the project. Remove any you created in the project.
 """
 
 DIRECT_SENTINEL = """- Print exactly this as the last line of your final message:
@@ -234,9 +238,9 @@ def cmd_launch(args):
     rd = run_dir(run_id)
     rd.mkdir(parents=True)
     result = rd / "result.md"
-    brief = Path(args.brief).expanduser().read_text() + CONTRACT.format(result=result) + DIRECT_SENTINEL
+    brief = Path(args.brief).expanduser().read_text() + CONTRACT.format(result=result, scratch=rd) + DIRECT_SENTINEL
     (rd / "brief.md").write_text(brief)
-    title = f"{args.title} [{args.worker}]"
+    title = f"{args.title} [{args.worker}] {run_id[-4:]}"
     meta = {"run": run_id, "worker": args.worker, "path": str(path), "title": title,
             "started": now(), "result": str(result), "via": None, "session": None, "pid": None}
 
