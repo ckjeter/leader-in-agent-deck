@@ -40,7 +40,7 @@ leader health
 | `degraded` | agent-deck is down, worker CLIs exist | `leader launch` falls back to a headless run of the worker CLI by itself (`via: direct`). Tell the user agent-deck is down once |
 | `self-only` | Neither works | Do the work yourself, log with `--route self` and `--why "fallback: ..."` |
 
-Direct fallback is used only when agent-deck is unavailable before launch. A failed or timed-out launch may already have created a worker. The helper records that attempt and any new session ID in `meta.json`, then exits with an error. Inspect that session before retrying. Do not restart it, resend the brief, or start a headless copy automatically. Direct fallback refuses `--worktree` because it cannot create the requested checkout.
+Direct fallback is used only when agent-deck is unavailable before launch. Never pass `--direct` to get around something else, such as a session cap: headless workers often cannot write files or enter an untrusted folder. A failed or timed-out launch may already have created a worker. The helper records that attempt and any new session ID in `meta.json`, then exits with an error. Inspect that session before retrying. Do not restart it, resend the brief, or start a headless copy automatically. Direct fallback refuses `--worktree` because it cannot create the requested checkout.
 
 `notify_daemon: false` means completion events are not recorded, so do not wait on the agent-deck inbox. Always wait with `leader wait`, which reads the session directly. `usage` shows subscription windows that agent-deck can see (Claude today).
 
@@ -49,6 +49,8 @@ Direct fallback is used only when agent-deck is unavailable before launch. A fai
 Break the task into pieces and give each a class: `impl`, `review`, `research`, `bulk`, `read`, `write`.
 
 Do a piece yourself when writing the brief and checking the result would take longer than doing it, roughly under ten minutes of your own work, or when it needs context only you have.
+
+Pieces that run at the same time must not share files. Give each piece the files it owns and name them in its brief. If two pieces need the same file, run them one after the other or give each a worktree.
 
 For the rest:
 
@@ -77,7 +79,7 @@ Write the brief to a file. A good brief has:
 leader launch --worker pi/glm-5.2 --path <repo> --brief <brief file> --title "<short task>" --class impl
 ```
 
-Add `--worktree <branch>` for `impl` pieces in a repo where you or another worker are also editing. `launch` appends the output contract (write `result.md`, short summary, `NEED:` when blocked) and the done sentinel. It returns the `run` id, the agent-deck `session` and the `result` path.
+Add `--worktree <branch>` for `impl` pieces in a repo where you or another worker are also editing. `launch` appends the output contract (write `result.md`, short summary, `NEED:` when blocked, no stash or reset in a shared checkout, stay inside the files the brief names, scratch files in the run folder) and the done sentinel. Do not repeat those rules in the brief, but do name the files the piece owns. It returns the `run` id, the agent-deck `session` and the `result` path.
 
 ## 4. Wait
 
