@@ -131,6 +131,96 @@ def append_event(h, event):
     return f
 
 
+# ---------- pool usage ----------
+
+WINDOW_CAPS = {"5h": 80, "7d": 90}
+
+
+def window_label(minutes):
+    return {300: "5h", 10080: "7d"}.get(minutes, f"{minutes}m")
+
+
+def find_key(obj, key):
+    if isinstance(obj, dict):
+        if isinstance(obj.get(key), dict):
+            return obj[key]
+        obj = list(obj.values())
+    if isinstance(obj, list):
+        for item in obj:
+            found = find_key(item, key)
+            if found:
+                return found
+    return None
+
+
+def codex_usage():
+    """Codex writes the account's rate limits into every session file. Read the newest one."""
+    root = Path(os.environ.get("CODEX_HOME", "~/.codex")).expanduser() / "sessions"
+    try:
+        files = sorted(root.glob("*/*/*/rollout-*.jsonl"), key=lambda f: f.stat().st_mtime)[-5:]
+    except OSError:
+        return None
+    for f in reversed(files):
+        try:
+            lines = [line for line in f.read_bytes().splitlines() if b'"rate_limits"' in line]
+        except OSError:
+            continue
+        for line in reversed(lines):
+            try:
+                limits = find_key(json.loads(line), "rate_limits")
+            except json.JSONDecodeError:
+                continue
+            windows = [{"label": window_label(w.get("window_minutes")), "used_percentage": w.get("used_percent"),
+                        "resets_at": w.get("resets_at")}
+                       for w in ((limits or {}).get("primary"), (limits or {}).get("secondary")) if w]
+            if windows:
+                return {"windows": windows, "as_of": int(f.stat().st_mtime), "source": "codex session files"}
+    return None
+
+
+def pool_usage(roster, events):
+    """Per pool: what the provider says is used, when a worker last hit a limit, and whether to dispatch."""
+    budget = roster.get("budget", {})
+    hold = budget.get("limit_hold_minutes", 300) * 60
+    bake_cap = budget.get("bakeoff_max", 60)
+    current = time.time()
+    deck = None
+    report = {}
+    for name, spec in roster.get("pools", {}).items():
+        gauge = str(spec.get("gauge", ""))
+        entry = {"windows": None, "as_of": None, "source": None}
+        if gauge.startswith("agent-deck"):
+            deck = deck if deck is not None else (ad_json("usage", timeout=30) or {})
+            for p in deck.get("providers", []):
+                if p.get("id") == spec.get("provider", name):
+                    entry = {"windows": [{k: w.get(k) for k in ("label", "used_percentage", "resets_at")}
+                                         for w in p.get("windows", [])],
+                             "as_of": p.get("updated_at"), "source": "agent-deck usage"}
+        elif gauge == "codex-sessions":
+            entry = codex_usage() or entry
+        why, room = [], True
+        for w in entry["windows"] or []:
+            used = w.get("used_percentage")
+            if used is None:
+                continue
+            if w.get("resets_at") and w["resets_at"] <= current:
+                w["reset_since_reading"] = True
+                continue
+            if used >= budget.get(f"max_{w['label']}", WINDOW_CAPS.get(w["label"], 90)):
+                why.append(f"{w['label']} window at {used}%")
+            room = room and used < bake_cap
+        hits = [e for e in events if e.get("type") == "pool_limit" and e.get("pool") == name]
+        entry["last_limit"] = hits[-1]["ts"] if hits else None
+        if hits and current - datetime.fromisoformat(hits[-1]["ts"]).timestamp() < hold:
+            why.append(f"a worker hit its limit at {hits[-1]['ts']}")
+        entry["age_minutes"] = round((current - entry["as_of"]) / 60) if entry["as_of"] else None
+        entry["ok"] = not why
+        entry["why"] = why
+        entry["room_for_bakeoff"] = not why and room and entry["windows"] is not None
+        report[name] = entry
+    return report
+
+
 # ---------- health ----------
 
 def cmd_health(args):
@@ -140,8 +230,7 @@ def cmd_health(args):
     report["agent_deck"] = "ok" if ok else f"down: {text.strip()[:200]}"
     ws = ad_json("inbox", "writer-status", timeout=20)
     report["notify_daemon"] = bool(ws and ws.get("running"))
-    usage = ad_json("usage", timeout=30)
-    report["usage"] = usage
+    report["pools"] = pool_usage(roster, read_ledger(host(roster)))
     clis = {w: shutil.which(spec["direct"][0]) is not None for w, spec in roster["workers"].items()}
     report["direct_cli_available"] = clis
     if ok:
@@ -159,51 +248,58 @@ def cmd_roster(args):
     roster = load_roster()
     h = host(roster)
     events = read_ledger(h)
-    regrades = {r["id"]: r["grade"] for r in events if r.get("type") == "regrade"}
-    dispatches = [{**r, "grade": regrades.get(r["id"], r.get("grade"))}
-                  for r in events if r.get("type") == "dispatch" and r.get("route") == "delegate"]
-    recent = dispatches[-10:]
-    explored = sum(1 for r in recent if r.get("explore"))
-    share = roster.get("exploration_share", 0.2)
+    dispatches = [r for r in events if r.get("type") == "dispatch" and r.get("route") == "delegate"]
     workers = roster["workers"]
     classes = [args.cls] if args.cls else CLASSES
     stats = {}
     for r in dispatches:
-        w = r.get("worker", {}).get("id")
+        w = (r.get("worker") or {}).get("id")
         if not w or r.get("class") not in classes:
             continue
-        s = stats.setdefault(w, {}).setdefault(r["class"], {"n": 0, "grades": [], "failed": 0, "abandoned": 0})
+        s = stats.setdefault(w, {}).setdefault(r["class"], {"n": 0, "failed": 0, "abandoned": 0})
         s["n"] += 1
-        if r.get("grade") is not None:
-            s["grades"].append(r["grade"])
         s["failed"] += r.get("outcome") == "failed"
         s["abandoned"] += r.get("outcome") == "abandoned"
-    result = {
+    pools = pool_usage(roster, events)
+    defaults = {c: roster.get("defaults", {}).get(c, []) for c in classes}
+    available = {w: shutil.which(spec["direct"][0]) is not None for w, spec in workers.items()}
+
+    def usable(w):
+        return available.get(w, False) and pools.get(workers[w].get("pool"), {}).get("ok", True)
+
+    bake = roster.get("bakeoff", {})
+    bake_pools = set(bake.get("pools") or {workers[w].get("pool") for ws in roster.get("defaults", {}).values()
+                                           for w in ws if w in workers})
+    route = {}
+    for c in classes:
+        pick = next((w for w in defaults[c] if usable(w)), None)
+        challengers = [w for w in workers if w != pick and usable(w) and workers[w].get("pool") in bake_pools
+                       and pools.get(workers[w].get("pool"), {}).get("room_for_bakeoff")]
+        # Another pool first: a different vendor tells more, and the extra run does not draw on the same window.
+        challenger = min(challengers, default=None,
+                         key=lambda w: (bool(pick) and workers[w].get("pool") == workers[pick].get("pool"),
+                                        stats.get(w, {}).get(c, {}).get("n", 0)))
+        if not (bake.get("enabled", True) and pick
+                and pools.get(workers[pick].get("pool"), {}).get("room_for_bakeoff")):
+            challenger = None
+        route[c] = {"pick": pick, "bakeoff_challenger": challenger}
+    out({
         "host": h,
-        "explore_now": len(recent) >= 3 and explored < round(share * len(recent)),
-        "recent_explored": f"{explored}/{len(recent)}",
-        "defaults": {c: roster.get("defaults", {}).get(c, []) for c in classes},
+        "pools": pools,
+        "route": route,
+        "defaults": defaults,
         "workers": {
             w: {
                 "pool": spec.get("pool"),
-                "available": shutil.which(spec["direct"][0]) is not None,
+                "available": available[w],
                 "cap_usd": spec.get("cap_usd"),
                 "free": spec.get("free", False),
                 "note": spec.get("note"),
-                "ledger": {
-                    c: {
-                        "n": s["n"],
-                        "mean_grade": round(sum(s["grades"]) / len(s["grades"]), 2) if s["grades"] else None,
-                        "failed": s["failed"],
-                        "abandoned": s["abandoned"],
-                    }
-                    for c, s in stats[w].items()
-                } if w in stats else None,
+                "ledger": stats.get(w),
             }
             for w, spec in workers.items()
         },
-    }
-    out(result)
+    })
 
 
 # ---------- launch ----------
@@ -403,6 +499,13 @@ def cmd_wait(args):
         time.sleep(args.interval)
     else:
         state, summary = "timeout", f"no completion after {args.timeout}s (last status {last_status})"
+    if state == "limit" and not meta.get("limit_logged"):
+        roster = load_roster()
+        pool = roster["workers"].get(meta["worker"], {}).get("pool")
+        append_event(host(roster), {"v": 1, "type": "pool_limit", "ts": now(), "host": host(roster), "pool": pool,
+                                    "worker": meta["worker"], "run": args.run, "summary": summary})
+        meta["limit_logged"] = True
+        (run_dir(args.run) / "meta.json").write_text(json.dumps(meta, indent=2))
     out({"run": args.run, "state": state, "summary": summary, "via": meta["via"],
          "session": meta["session"], "result": str(result), "result_exists": result.exists()})
 

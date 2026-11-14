@@ -53,6 +53,18 @@ A later opinion on an existing dispatch, usually from the user.
 
 The latest `regrade` for an `id` wins over the dispatch's own `grade`.
 
+## Event: `pool_limit`
+
+Written by `leader wait` when a worker stops on a usage limit. `leader roster` reads it and keeps the pool closed for the hold time (`[budget] limit_hold_minutes`, default 300), so other leaders on the host do not hit the same wall.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `v`, `type`, `ts`, `host` | | As above, `type` is `"pool_limit"` |
+| `pool` | string | Roster pool of the worker |
+| `worker` | string | Roster key of the worker |
+| `run` | string | Run id of the dispatch that hit the limit |
+| `summary` | string | The limit message as the worker printed it |
+
 ## Run folder
 
 `$LEADER_HOME/runs/<id>/` holds `brief.md` (what the worker was told), `result.md` (what it wrote), `meta.json` (launch details), `followup-<n>.md` (each follow-up message) and, for `via: direct`, `stdout.log`. The pipeline may archive these next to the ledger.

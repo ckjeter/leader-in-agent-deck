@@ -69,7 +69,7 @@ Asking in plain words works too. An agent may also suggest leader mode on its ow
 - Subscriptions I already pay for do most of the work.
 - The strongest model stays on the leader.
 - The same model appears under two harnesses on purpose, so the ledger can tell the model from the harness.
-- Models I am only curious about get no default slot. A fixed share of dispatches (`exploration_share`, 20% by default) goes to non-default workers, so trying them is cheap and still gets measured.
+- Models I am only curious about get no default slot. New workers get tried through bakeoffs: one piece per round goes to the default and to the worker with the least data, when both pools have room. It is on by default and the user can turn it off for a task by saying so.
 
 ## The ledger
 
@@ -80,17 +80,14 @@ One JSON line per piece of work, in `~/.local/share/leader/ledger/<host>.jsonl`.
 {"v":1,"type":"dispatch","id":"20260301-101733-c3d4","host":"laptop","route":"delegate","via":"agent-deck","worker":{"id":"pi/deepseek-v4-pro","pool":"opencode-go"},"class":"review","task":"Review the retry change for races","why":"exploration slot, low risk","explore":true,"verify":"checked both findings by hand","outcome":"done","grade":3,"rework":null,"followups":0}
 ```
 
-`leader roster --class impl` reads the ledger back next to the roster, so the next routing decision sees the record:
+`leader roster --class impl` puts quota next to the roster. The leader picks by the roster order and by what each pool has left:
 
 ```json
-"codex/gpt-6.1-sol": {
-  "pool": "codex",
-  "note": "Second in line for implementation",
-  "ledger": {"impl": {"n": 12, "mean_grade": 2.58, "failed": 1, "abandoned": 0}}
-}
+"pools": {"codex": {"windows": [{"label": "5h", "used_percentage": 85}], "ok": false, "why": ["5h window at 85%"]}},
+"route": {"impl": {"pick": "claude/opus-5.5", "bakeoff_challenger": null}}
 ```
 
-Once a worker has about ten rows in a class, its numbers count for more than the note.
+The leader does not route on grades. A few dozen self-assigned grades move too much to rank workers. The ledger is for you to analyze, and the order in `defaults` changes when you decide it should.
 
 The ledger holds only what the leader knows: why a worker was picked and how good the result was. Tokens, cost and duration are left to whatever reads the harness transcripts.
 

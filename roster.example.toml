@@ -11,11 +11,21 @@
 # - The strongest model stays on the leader and is never a worker.
 # - The same model appears under two harnesses on purpose, so the ledger can
 #   separate the model from the harness.
-# - Open models through a cheap gateway get no default slot. They get work only
-#   through exploration slots, so trying them costs little.
-# - Free workers are preferred for exploration.
+# - Open models through a cheap gateway get no default slot, so the leader
+#   never picks them and never uses them as a bakeoff challenger.
 
-exploration_share = 0.2   # share of dispatches that go to a non-default worker
+# When the leader stops sending work to a pool. Percentages are of a usage window.
+[budget]
+max_5h = 80               # no new dispatch once the 5h window is past this
+max_7d = 90               # same for the weekly window
+bakeoff_max = 60          # a bakeoff needs every window of both pools under this
+limit_hold_minutes = 300  # after a worker hits a limit, keep its pool closed this long
+
+# One piece per round goes to two workers for a real comparison. The user can
+# also turn it off for a task by saying so.
+[bakeoff]
+enabled = true
+# pools = ["claude", "codex"]   # where challengers come from. Default: every pool with a default slot
 
 [hosts]                   # hostname -s -> short name written to the ledger
 "my-laptop" = "laptop"
@@ -24,20 +34,21 @@ exploration_share = 0.2   # share of dispatches that go to a non-default worker
 [pools.claude]
 kind = "subscription"
 limits = "5h and 7d windows, shared with a Claude leader"
-gauge = "agent-deck usage --json"
+gauge = "agent-deck"      # read from `agent-deck usage`, provider id = pool name
 
 [pools.codex]
 kind = "subscription"
 limits = "weekly window, shared by the codex CLI and pi's openai-codex provider"
+gauge = "codex-sessions"  # read from the rate limits Codex writes into its newest session file
 
 [pools.opencode-go]
-kind = "subscription, exploration only"
-limits = "one shared window across all models"
+kind = "subscription, no default slot"
+limits = "one shared window across all models. No gauge: the leader only knows when a worker last hit the limit"
 console = "https://opencode.ai/console"
 
 # Default worker order per task class. First healthy one wins.
 # When a pool hits its limit the leader skips to the next entry.
-# Gateway workers are left out on purpose: exploration slots are the only way they get work.
+# Gateway workers are left out on purpose. Add one to a list to give it work.
 [defaults]
 impl     = ["claude/opus-5.5", "codex/gpt-6.1-sol", "claude/sonnet-5.5"]
 review   = ["claude/opus-5.5", "codex/gpt-6-astra", "claude/sonnet-5.5"]
@@ -48,7 +59,7 @@ write    = ["claude/sonnet-5.5", "claude/opus-5.5", "codex/gpt-6-astra"]
 
 # launch: agent-deck launch flags that select the harness and model.
 # direct: argv for a headless run when agent-deck is down. The prompt is appended as the last argument.
-# Optional per worker: free = true (preferred for exploration), cap_usd = <number> (your own spending note).
+# Optional per worker: free = true, cap_usd = <number> (your own notes, the leader does not act on them).
 
 # --- Claude Code ---
 
@@ -110,7 +121,7 @@ launch = ["-cmd", "pi --model opencode-go/claude-haiku-5-5"]
 direct = ["pi", "-p", "--model", "opencode-go/claude-haiku-5-5"]
 note = "Same model as claude/haiku-5.5. Harness comparison"
 
-# --- pi: open models through a gateway, exploration only ---
+# --- pi: open models through a gateway, no default slot ---
 
 [workers."pi/kimi-k3.1-pro-go"]
 pool = "opencode-go"
@@ -135,4 +146,4 @@ pool = "opencode-go"
 free = true
 launch = ["-cmd", "pi --model opencode-go/beam-free"]
 direct = ["pi", "-p", "--model", "opencode-go/beam-free"]
-note = "Free while the offer lasts, so it gets exploration slots first"
+note = "Free while the offer lasts"
