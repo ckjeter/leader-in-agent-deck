@@ -32,7 +32,7 @@ A yes covers the task it was given for, not later ones.
 leader health
 ```
 
-If workers from an earlier task in this conversation are still open, archive them now (section 6).
+If workers from an earlier task in this conversation are still listed, archive them now (section 6).
 
 `mode` decides how you work for the rest of the task:
 
@@ -142,18 +142,18 @@ leader log --run <run id> --class impl --task "<one line>" --why "<one line>" \
 leader log --route self --class read --task "<one line>" --why "faster than a brief" --outcome done
 ```
 
-Add `--bakeoff <id>` to every row of a bakeoff and `--explore` to the challenger's row. Do not archive yet. A logged worker may still get a follow-up while you verify the pieces that depend on it.
+Add `--bakeoff <id>` to every row of a bakeoff and `--explore` to the challenger's row. Do not stop or archive it yet. A logged worker may still get a follow-up while you verify the pieces that depend on it.
 
 ## 6. Report
 
 End with a short table for the user: each piece, who did it, its agent-deck session, grade, and anything that failed or needs their decision.
 
-Leave this task's workers open when you report. The user may want to open a session and read what it did. Archive them later, with `agent-deck session archive <session>`:
+Stop this task's workers when you report, with `agent-deck session stop <session>`, and do not archive them yet. A stopped session gives its memory back and stays in the list, so the user can still read what it did: `agent-deck session output <session>` works on it. Archive them later, with `agent-deck session archive <session>`:
 
 - when the next task starts in this conversation, before its first launch, or
 - when the user says they are done with them.
 
-Keep a worker past that point only when its piece still waits on the user's decision. A new piece gets a new worker even while an old one is open: one run is one ledger row.
+Leave a worker running only when its piece still waits on the user's decision, and say so in the table. A new piece gets a new worker even while an old one is listed: one run is one ledger row.
 
 If the user later disagrees with a grade:
 
