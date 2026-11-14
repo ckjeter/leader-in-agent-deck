@@ -28,7 +28,7 @@ class LaunchTests(unittest.TestCase):
         self.brief.write_text("Implement the task.")
         self.args = argparse.Namespace(worker="test", path=str(self.root), brief=str(self.brief),
                                        title="Task", direct=False, worktree=None, cls="impl")
-        self.roster = {"workers": {"test": {"launch": ["-c", "pi"], "direct": ["pi", "-p"]}}}
+        self.roster = {"workers": {"test": {"pool": "go", "launch": ["-c", "pi"], "direct": ["pi", "-p"]}}}
         self.patches = [patch.object(leader, "HOME", self.root / "state"),
                         patch.object(leader, "load_roster", return_value=self.roster),
                         patch.object(leader.shutil, "which", return_value="/fake/pi"),
@@ -118,6 +118,69 @@ class LaunchTests(unittest.TestCase):
         with patch.object(leader, "pid_alive", return_value=True), contextlib.redirect_stdout(io.StringIO()) as output:
             leader.cmd_wait(argparse.Namespace(run=result["run"], timeout=1, interval=0))
         self.assertEqual(json.loads(output.getvalue())["state"], "limit")
+        events = leader.read_ledger(leader.host(self.roster))
+        self.assertEqual([(e["type"], e["pool"]) for e in events], [("pool_limit", "go")])
+
+    def roster_report(self, cls="impl"):
+        with patch.object(leader, "host", return_value="test"), \
+             contextlib.redirect_stdout(io.StringIO()) as output:
+            leader.cmd_roster(argparse.Namespace(cls=cls))
+        return json.loads(output.getvalue())
+
+    def two_pools(self, used_a, used_b):
+        soon = leader.time.time() + 3600
+        self.roster.update({
+            "pools": {"a": {"gauge": "agent-deck"}, "b": {"gauge": "agent-deck"}, "go": {}},
+            "defaults": {"impl": ["first", "second"]},
+            "workers": {"first": {"pool": "a", "launch": [], "direct": ["pi"]},
+                        "second": {"pool": "b", "launch": [], "direct": ["pi"]},
+                        "toy": {"pool": "go", "launch": [], "direct": ["pi"]}}})
+        usage = {"providers": [{"id": pool, "updated_at": int(leader.time.time()),
+                                "windows": [{"label": "5h", "used_percentage": used, "resets_at": soon}]}
+                               for pool, used in (("a", used_a), ("b", used_b))]}
+        return patch.object(leader, "ad_json", return_value=usage)
+
+    def test_route_skips_a_pool_over_its_cap(self):
+        with self.two_pools(85, 10):
+            report = self.roster_report()
+        self.assertFalse(report["pools"]["a"]["ok"])
+        self.assertEqual(report["route"]["impl"], {"pick": "second", "bakeoff_challenger": None})
+
+    def test_bakeoff_needs_room_in_both_pools_and_never_uses_a_pool_outside_defaults(self):
+        with self.two_pools(10, 10):
+            self.assertEqual(self.roster_report()["route"]["impl"], {"pick": "first", "bakeoff_challenger": "second"})
+        with self.two_pools(10, 70):
+            self.assertEqual(self.roster_report()["route"]["impl"], {"pick": "first", "bakeoff_challenger": None})
+        with self.two_pools(70, 10):
+            self.assertEqual(self.roster_report()["route"]["impl"], {"pick": "first", "bakeoff_challenger": None})
+
+    def test_bakeoff_can_be_switched_off_in_the_roster(self):
+        with self.two_pools(10, 10):
+            self.roster["bakeoff"] = {"enabled": False}
+            self.assertIsNone(self.roster_report()["route"]["impl"]["bakeoff_challenger"])
+
+    def test_a_recent_limit_closes_the_pool_and_an_old_one_does_not(self):
+        for age, ok in ((60, False), (6 * 3600, True)):
+            with self.subTest(age=age), self.two_pools(10, 10):
+                ts = leader.datetime.fromtimestamp(leader.time.time() - age).astimezone().isoformat(timespec="seconds")
+                leader.ledger_file("test").unlink(missing_ok=True)
+                leader.append_event("test", {"type": "pool_limit", "ts": ts, "pool": "a"})
+                self.assertEqual(self.roster_report()["pools"]["a"]["ok"], ok)
+
+    def test_a_window_that_reset_after_the_reading_does_not_block(self):
+        with self.two_pools(95, 10) as usage:
+            usage.return_value["providers"][0]["windows"][0]["resets_at"] = leader.time.time() - 60
+            self.assertTrue(self.roster_report()["pools"]["a"]["ok"])
+
+    def test_codex_limits_are_read_from_the_newest_session_file(self):
+        day = self.root / "codex" / "sessions" / "2026" / "01" / "01"
+        day.mkdir(parents=True)
+        line = {"payload": {"rate_limits": {"primary": {"used_percent": 12.0, "window_minutes": 300, "resets_at": 9},
+                                            "secondary": {"used_percent": 40.0, "window_minutes": 10080, "resets_at": 9}}}}
+        (day / "rollout-a.jsonl").write_text("{}\n" + json.dumps(line) + "\n{}\n")
+        with patch.dict(leader.os.environ, {"CODEX_HOME": str(self.root / "codex")}):
+            usage = leader.codex_usage()
+        self.assertEqual([(w["label"], w["used_percentage"]) for w in usage["windows"]], [("5h", 12.0), ("7d", 40.0)])
 
     def wait(self, status, output):
         sessions = [{"id": "new", "status": status}]
