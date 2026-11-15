@@ -20,11 +20,11 @@
 # [agent_deck]
 # group = "leader-workers"
 #
-# trust_folders = true skips the "trust this folder?" prompt of Claude Code and
-# Codex for every folder the leader launches a worker into. Off by default: a
-# trusted folder's own settings and hooks can run code, so turn it on only when
-# the leader works in folders you would trust anyway.
-# trust_folders = true
+# The leader marks every folder it launches a worker into as trusted, so Claude
+# Code and Codex do not stop at "trust this folder?". A trusted folder's own
+# settings and hooks can run code. Set this to false when the leader works in
+# code you did not write, and accept the prompt yourself.
+# trust_folders = false
 
 # When the leader stops sending work to a pool. Percentages are of a usage window.
 [budget]

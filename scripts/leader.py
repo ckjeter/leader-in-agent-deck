@@ -400,7 +400,7 @@ def cmd_launch(args):
             meta["agent_deck_error"] = "agent-deck unavailable before launch; falling back to direct"
         else:
             group = roster.get("agent_deck", {}).get("group")
-            trust = roster.get("agent_deck", {}).get("trust_folders") is True
+            trust = roster.get("agent_deck", {}).get("trust_folders", True) is not False
             if trust and spec["direct"][0] == "codex" and not args.worktree:
                 meta["codex_trust"] = trust_for_codex(path)
             cmd = ["launch", "-t", title, *spec["launch"], "-assert-done",
