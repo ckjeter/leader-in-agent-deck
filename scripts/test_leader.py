@@ -183,6 +183,25 @@ class LaunchTests(unittest.TestCase):
             usage = leader.codex_usage()
         self.assertEqual([(w["label"], w["used_percentage"]) for w in usage["windows"]], [("5h", 12.0), ("7d", 40.0)])
 
+    def test_folders_are_trusted_only_when_the_roster_says_so(self):
+        codex = self.root / "codex"
+        self.roster["workers"]["test"]["direct"] = ["codex", "exec"]
+        with patch.dict(leader.os.environ, {"CODEX_HOME": str(codex)}):
+            _, ad = self.launch([[]], '{"success":true,"session_id":"new"}', ok=True)
+            self.assertNotIn("--trust-folder", ad.call_args.args)
+            self.assertFalse((codex / "config.toml").exists())
+            codex.mkdir()
+            (codex / "config.toml").write_text('model = "x"\n\n[projects."/other"]\ntrust_level = "trusted"\n')
+            self.roster["agent_deck"] = {"trust_folders": True}
+            for suffix in ("aaaa", "bbbb"):
+                with patch.object(leader.secrets, "token_hex", return_value=suffix):
+                    _, ad = self.launch([[]], '{"success":true,"session_id":"new"}', ok=True)
+            self.assertIn("--trust-folder", ad.call_args.args[:-1])
+            config = leader.tomllib.loads((codex / "config.toml").read_text())
+        self.assertEqual(config["model"], "x")
+        self.assertEqual(config["projects"], {"/other": {"trust_level": "trusted"},
+                                              str(self.root): {"trust_level": "trusted"}})
+
     def test_brief_tells_the_worker_how_to_share_a_checkout(self):
         result, _ = self.launch([[]], '{"success":true,"session_id":"new"}', ok=True)
         brief = (Path(result["result"]).parent / "brief.md").read_text()
