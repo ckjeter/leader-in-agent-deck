@@ -197,6 +197,46 @@ class LaunchTests(unittest.TestCase):
             titles.append(ad.call_args.args[ad.call_args.args.index("-t") + 1])
         self.assertEqual(titles, ["Task [test] aaaa", "Task [test] bbbb"])
 
+    def go_usage(self, payload):
+        resp = unittest.mock.MagicMock()
+        resp.__enter__.return_value.read.return_value = payload
+        with patch.object(leader, "opencode_go_key", return_value="k"), \
+             patch.object(leader.urllib.request, "urlopen", return_value=resp) as urlopen:
+            return leader.opencode_go_usage(), urlopen
+
+    def test_opencode_go_windows_come_from_its_usage_endpoint(self):
+        payload = {"usage": {"rolling": {"status": "ok", "percent": 0, "resetsAt": "2030-01-01T05:00:00.000Z"},
+                             "weekly": {"status": "ok", "percent": 99, "resetsAt": "2030-01-07T00:00:00.000Z"},
+                             "monthly": {"status": "ok", "percent": 49, "resetsAt": "2030-02-01T00:00:00.000Z"}}}
+        usage, urlopen = self.go_usage(json.dumps(payload).encode())
+        self.assertEqual([(w["label"], w["used_percentage"]) for w in usage["windows"]],
+                         [("5h", 0), ("7d", 99), ("30d", 49)])
+        self.assertEqual(usage["windows"][0]["resets_at"], 1893474000)
+        self.assertEqual(urlopen.call_args.args[0].get_header("Authorization"), "Bearer k")
+        self.assertEqual(urlopen.call_args.args[0].get_header("User-agent"), "leader-in-agent-deck")
+        self.roster.update({"pools": {"go": {"gauge": "opencode-go"}}, "defaults": {"impl": ["test"]}})
+        with patch.object(leader, "opencode_go_usage", return_value=usage):
+            report = self.roster_report()
+        self.assertEqual(report["pools"]["go"]["why"], ["7d window at 99%"])
+        self.assertIsNone(report["route"]["impl"]["pick"])
+
+    def test_opencode_go_gauge_gives_no_reading_when_the_endpoint_changes_or_fails(self):
+        for payload in (b"<html>", b'{"usage": {"weekly": {"percent": 1}}}', b'{"other": 1}'):
+            with self.subTest(payload=payload):
+                self.assertIsNone(self.go_usage(payload)[0])
+        with patch.object(leader, "opencode_go_key", return_value="k"), \
+             patch.object(leader.urllib.request, "urlopen", side_effect=OSError("down")):
+            self.assertIsNone(leader.opencode_go_usage())
+        with patch.object(leader, "opencode_go_key", return_value=None), \
+             patch.object(leader.urllib.request, "urlopen") as urlopen:
+            self.assertIsNone(leader.opencode_go_usage())
+            urlopen.assert_not_called()
+        self.roster.update({"pools": {"go": {"gauge": "opencode-go"}}, "defaults": {"impl": ["test"]}})
+        with patch.object(leader, "opencode_go_usage", return_value=None):
+            pool = self.roster_report()["pools"]["go"]
+        self.assertTrue(pool["ok"])
+        self.assertIsNone(pool["source"])
+
     def wait(self, status, output, queued_grace=999, idle_grace=999):
         sessions = [{"id": "new", "status": status}]
         with patch.object(leader, "ad_json", return_value=sessions), \
