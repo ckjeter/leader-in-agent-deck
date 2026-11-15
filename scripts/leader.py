@@ -213,6 +213,22 @@ def opencode_go_usage():
     return {"windows": windows, "as_of": int(time.time()), "source": "opencode go usage endpoint"} if windows else None
 
 
+def trust_for_codex(path):
+    """Codex keeps its own list of trusted folders. Add this one, the way its trust prompt would."""
+    cfg = Path(os.environ.get("CODEX_HOME", "~/.codex")).expanduser() / "config.toml"
+    try:
+        text = cfg.read_text() if cfg.exists() else ""
+        if str(path) in tomllib.loads(text).get("projects", {}):
+            return True
+        added = text.rstrip("\n") + f"\n\n[projects.{json.dumps(str(path))}]\ntrust_level = \"trusted\"\n"
+        tomllib.loads(added)
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        cfg.write_text(added.lstrip("\n"))
+        return True
+    except (OSError, ValueError):
+        return False
+
+
 def pool_usage(roster, events):
     """Per pool: what the provider says is used, when a worker last hit a limit, and whether to dispatch."""
     budget = roster.get("budget", {})
@@ -384,8 +400,12 @@ def cmd_launch(args):
             meta["agent_deck_error"] = "agent-deck unavailable before launch; falling back to direct"
         else:
             group = roster.get("agent_deck", {}).get("group")
+            trust = roster.get("agent_deck", {}).get("trust_folders", True) is not False
+            if trust and spec["direct"][0] == "codex" and not args.worktree:
+                meta["codex_trust"] = trust_for_codex(path)
             cmd = ["launch", "-t", title, *spec["launch"], "-assert-done",
-                   "-message-file", str(rd / "brief.md"), *(["-g", group] if group else ["-inherit-group"])]
+                   "-message-file", str(rd / "brief.md"), *(["-g", group] if group else ["-inherit-group"]),
+                   *(["--trust-folder"] if trust else [])]
             if os.environ.get("AGENTDECK_INSTANCE_ID"):
                 cmd += ["-parent", os.environ["AGENTDECK_INSTANCE_ID"]]
             if args.worktree:

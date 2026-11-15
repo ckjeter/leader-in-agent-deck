@@ -63,4 +63,4 @@ Report in a few lines:
 - where the skill and the roster are,
 - which workers are on the roster and the default order per class,
 - how to start: `/leader <task>` in Claude Code, or "run this in leader mode" in any harness. The leader session should be one that agent-deck started, so workers attach to it,
-- one thing to know: the first time a worker opens a folder its CLI has never seen, the CLI asks whether to trust the folder. agent-deck's `trusted_folders` setting avoids that. See Known limitations in the README.
+- one thing to know: the first time a worker opens a folder its CLI has never seen, the CLI asks whether to trust the folder. The leader answers that for them: it marks every folder it launches a worker into as trusted. Tell the user this, and that `trust_folders = false` under `[agent_deck]` in the roster turns it off. See Known limitations in the README.

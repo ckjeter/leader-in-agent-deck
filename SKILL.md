@@ -15,7 +15,7 @@ All helper commands below run as `uv run <this skill's directory>/scripts/leader
 Workers spend the user's quota, so leader mode needs the user's say-so.
 
 - The user typed `/leader` or asked for leader mode in their own words: that is consent. Go on.
-- You loaded this skill on your own judgment: stop. Tell the user in two or three lines how you would split the task and which workers you would use, say that it launches agent sessions on their subscriptions, and ask whether to go ahead. Do not run `leader launch` until they say yes. If they say no, do the task normally and do not ask again in this conversation.
+- You loaded this skill on your own judgment: stop. Tell the user in two or three lines how you would split the task and which workers you would use, say that it launches agent sessions on their subscriptions and marks the task's folder as trusted for those workers, and ask whether to go ahead. Do not run `leader launch` until they say yes. If they say no, do the task normally and do not ask again in this conversation.
 
 A yes covers the task it was given for, not later ones.
 

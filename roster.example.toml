@@ -19,6 +19,12 @@
 # group that allows one session a worker waits behind the leader forever.
 # [agent_deck]
 # group = "leader-workers"
+#
+# The leader marks every folder it launches a worker into as trusted, so Claude
+# Code and Codex do not stop at "trust this folder?". A trusted folder's own
+# settings and hooks can run code. Set this to false when the leader works in
+# code you did not write, and accept the prompt yourself.
+# trust_folders = false
 
 # When the leader stops sending work to a pool. Percentages are of a usage window.
 [budget]
